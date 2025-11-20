@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 
 	tcclient "github.com/taskcluster/taskcluster/v93/clients/client-go"
@@ -109,6 +111,64 @@ func main() {
 	wp.OnComplete(func(result workerpool.Result) {
 		log.Printf("%s", result)
 	})
+
+	// Handle secret project/taskcluster/testing/client-libraries for client project/taskcluster/testing/client-libraries
+	s, err := devSecrets.Get("project/taskcluster/testing/client-libraries")
+	if err != nil {
+		panic(err)
+	}
+	var data map[string]any
+	err = json.Unmarshal(s.Secret, &data)
+	if err != nil {
+		panic(err)
+	}
+	ccr, err := devAuth.ResetAccessToken("project/taskcluster/testing/client-libraries")
+	if err != nil {
+		panic(err)
+	}
+	data["TASKCLUSTER_ACCESS_TOKEN"] = ccr.AccessToken
+	s.Secret, err = json.Marshal(data)
+	if err != nil {
+		panic(err)
+	}
+	err = devSecrets.Set("project/taskcluster/testing/client-libraries", s)
+	if err != nil {
+		panic(err)
+	}
+
+	// Handle secret project/taskcluster/testing/generic-worker/ci-creds for client project/taskcluster/testing/client-libraries
+	s, err = devSecrets.Get("project/taskcluster/testing/generic-worker/ci-creds")
+	if err != nil {
+		panic(err)
+	}
+	err = json.Unmarshal(s.Secret, &data)
+	if err != nil {
+		panic(err)
+	}
+	ccr, err = devAuth.ResetAccessToken("project/taskcluster/testing/client-libraries")
+	if err != nil {
+		panic(err)
+	}
+	re := regexp.MustCompile(`(?m)TASKCLUSTER_ACCESS_TOKEN=.*$`)
+	for _, key := range []string{
+		"b64_encoded_credentials_script",
+		"b64_encoded_credentials_batch_script",
+	} {
+		dec, err := base64.StdEncoding.DecodeString(data[key].(string))
+		if err != nil {
+			panic(fmt.Errorf("base64 decode failed: %w", err))
+		}
+		replaced := re.ReplaceAllString(string(dec), "TASKCLUSTER_ACCESS_TOKEN="+ccr.AccessToken)
+		data[key] = base64.StdEncoding.EncodeToString([]byte(replaced))
+	}
+	s.Secret, err = json.Marshal(data)
+	if err != nil {
+		panic(err)
+	}
+	err = devSecrets.Set("project/taskcluster/testing/client-libraries", s)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func CopyRoles(auth *tcauth.Auth) workerpool.WorkSubmitter {
