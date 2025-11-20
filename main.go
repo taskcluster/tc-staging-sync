@@ -141,6 +141,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	data = map[string]any{}
 	err = json.Unmarshal(s.Secret, &data)
 	if err != nil {
 		panic(err)
