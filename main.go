@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -288,7 +289,23 @@ func CopyWorkerPool(wp tcworkermanager.WorkerPoolFullDefinition, mut ProviderIDM
 		if providerID == "aws" || providerID == "static" {
 			return fmt.Sprintf("Skipping %v worker pool %v", providerID, wp.WorkerPoolID)
 		}
-		_, err := workermanager.CreateWorkerPool(
+
+		var config map[string]any
+
+		err := json.Unmarshal(wp.Config, &config)
+		if err != nil {
+			panic(fmt.Errorf("parsing wp.Config as JSON object failed: %w (payload: %s)", err, string(wp.Config)))
+		}
+		config["minCapacity"] = 0
+
+		b, err := json.Marshal(config)
+		if err != nil {
+			panic(fmt.Errorf("re-encoding updated config failed: %w (map: %#v)", err, config))
+		}
+
+		wp.Config = json.RawMessage(b)
+
+		_, err = workermanager.CreateWorkerPool(
 			wp.WorkerPoolID,
 			&tcworkermanager.WorkerPoolDefinition{
 				Config:       wp.Config,
